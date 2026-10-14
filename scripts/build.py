@@ -159,9 +159,8 @@ def classify(reg, anb):
         pct = num(reg.get("Percentual indexador"))
         fee = num(reg.get("Taxa adicional")) or 0
         if idx == "DI":
+            # DI + spread só quando há spread; 100% DI sem spread é negociado em % do DI
             if pct in (None, 100) and fee > 0:
-                return "DI+"
-            if pct in (None, 100) and fee == 0:
                 return "DI+"
             return "%DI"
         if idx == "IPCA":
@@ -191,8 +190,8 @@ def rem_from_reg(reg):
     pct = num(reg.get("Percentual indexador"))
     fee = num(reg.get("Taxa adicional"))
     if idx.upper() == "DI":
-        if pct not in (None, 100):
-            return f"{fmt_pct(pct)}% DI" + (f" + {fmt_pct(fee)}%" if fee else "")
+        if pct not in (None, 100) or not fee:
+            return f"{fmt_pct(pct or 100)}% DI" + (f" + {fmt_pct(fee)}%" if fee else "")
         return f"DI + {fmt_pct(fee or 0)}%"
     if idx.upper() == "PREFIXADO":
         return f"{fmt_pct(fee)}%" if fee is not None else "Prefixado"

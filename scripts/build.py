@@ -12,11 +12,13 @@ Regras:
   - O que não existir/não der para calcular fica null (n/a no dashboard)
 """
 import csv, io, json, os, sys, time, datetime as dt, urllib.request, urllib.error
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import devedores
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "data")
 MIN_VOL = 20_000
-WINDOW_DAYS = 5
+WINDOW_DAYS = 7  # janela "7d" em dias corridos, terminando no último pregão
 UA = {"User-Agent": "Mozilla/5.0 (debenture-tracker)"}
 B3_EXPORT = "https://arquivos.b3.com.br/bdi/table/export/csv?lang=pt-BR"
 ANBIMA_URL = "https://www.anbima.com.br/informacoes/merc-sec-debentures/arqs/db{:%y%m%d}.txt"
@@ -117,7 +119,7 @@ def b3_csv(name, d0, d1):
 
 
 def b3_trades(end):
-    start = end - dt.timedelta(days=12)
+    start = end - dt.timedelta(days=21)
     rows = b3_csv("Trade", start, end)
     out = []
     for r in rows:
@@ -131,7 +133,8 @@ def b3_trades(end):
             "c": r["Código IF"].strip(), "t": r["Instrumento financeiro"], "emissor": r.get("Emissor", "").strip(),
             "d": d, "q": num(r.get("Quantidade negociada")), "p": num(r.get("Preço negócio")),
             "v": num(r.get("Volume financeiro (R$)")), "r": num(r.get("Taxa negócio")),
-            "sit": r.get("Situação negócio", ""),
+            "sit": r.get("Situação negócio", ""), "h": r.get("Horário negócio", ""),
+            "isin": (r.get("Código ISIN") or "").strip(),
         })
     return out
 
@@ -225,20 +228,43 @@ def main():
     trades = b3_trades(ref)
     # pregão de hoje só entra depois das 20h (B3 publica o arquivo completo ~18h)
     cutoff = ref if (len(sys.argv) > 1 or now_brt().hour >= 20) else ref - dt.timedelta(days=1)
-    dates = sorted({t["d"] for t in trades if t["d"] <= cutoff})[-WINDOW_DAYS:]
-    trades = [t for t in trades if t["d"] in dates]
-    valid = [t for t in trades if t["sit"] != "Cancelado" and t["r"] is not None
+    trades = [t for t in trades if t["d"] <= cutoff]
+    d_b3 = max((t["d"] for t in trades), default=None)
+    if d_b3:
+        w0 = d_b3 - dt.timedelta(days=WINDOW_DAYS - 1)          # janela atual: 7 dias corridos
+        p0, p1 = w0 - dt.timedelta(days=WINDOW_DAYS), w0 - dt.timedelta(days=1)  # 7 dias anteriores
+    # negócios repetidos (mesmo papel, dia, horário, quantidade e preço) contam uma vez só
+    seen, uniq = set(), []
+    for t in trades:
+        k = (t["c"], t["d"], t["h"], t["q"], t["p"])
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(t)
+    log(f"  {len(trades)} negócios, {len(uniq)} após remover repetidos")
+    valid = [t for t in uniq if t["sit"] != "Cancelado" and t["r"] is not None
              and t["v"] is not None and t["v"] >= MIN_VOL and abs(t["r"]) < 100]
-    log(f"  pregões {dates}: {len(trades)} negócios, {len(valid)} válidos")
-    d_b3 = dates[-1] if dates else None
+    dates = sorted({t["d"] for t in uniq if d_b3 and w0 <= t["d"] <= d_b3})
+    log(f"  janela 7d {dates}: {len(valid)} válidos no total")
 
     log("B3 cadastro...")
     reg = b3_registry(ref)
 
-    by = {}
+    log("CVM devedores...")
+    try:
+        devedor = devedores.load(os.path.join(OUT, "cnpj_nomes.json"))
+    except Exception as e:  # noqa
+        log(f"  CVM indisponível: {e}")
+        devedor = lambda c, i: None
+
+    by, byp = {}, {}
     for t in valid:
-        by.setdefault(t["c"], []).append(t)
+        if w0 <= t["d"] <= d_b3:
+            by.setdefault(t["c"], []).append(t)
+        elif p0 <= t["d"] <= p1:
+            byp.setdefault(t["c"], []).append(t)
     issuer_b3 = {t["c"]: (t["t"], t["emissor"]) for t in trades}
+    isin_b3 = {t["c"]: t["isin"] for t in trades if t["isin"]}
 
     codes = set(k for k, v in anb.items() if v["taxa"] is not None or v["ppar"] is not None) | set(by)
     rows = []
@@ -246,6 +272,10 @@ def main():
         a, ap, r, ts = anb.get(c), anb_prev.get(c), reg.get(c), by.get(c, [])
         tipo = (r or {}).get("Instrumento financeiro") or issuer_b3.get(c, ("DEB",))[0]
         emissor = (a or {}).get("nome") or ((r or {}).get("Emissor") or issuer_b3.get(c, ("", ""))[1]).strip()
+        securit, dev = None, None
+        if tipo in ("CRI", "CRA"):
+            securit = emissor
+            dev = devedor(c, ((r or {}).get("Código ISIN") or isin_b3.get(c) or "").strip())
         venc = to_iso(a["venc"]) if a else (to_iso(r["Vencimento"]) if r else None)
         rem = a["rem"] if a else (rem_from_reg(r) if r else None)
         inc = None
@@ -266,18 +296,20 @@ def main():
             v = sum(t["v"] for t in sub)
             q = sum(t["q"] or 0 for t in sub)
             return round(v / q / par * 100, 2) if q else None
+        tp = byp.get(c, [])
+        bw, bwp_prev = (wavg(ts) if ts else None), (wavg(tp) if tp else None)
         row = {
-            "c": c, "t": tipo, "e": emissor, "idx": classify(r, a), "rem": rem, "venc": venc,
+            "c": c, "t": tipo, "e": dev or emissor, "sec": securit, "dev": bool(dev), "idx": classify(r, a), "rem": rem, "venc": venc,
             "inc": inc, "vem": vol_em,
             "a": a["taxa"] if a else None,
             "a_w": round((a["taxa"] - ap["taxa"]) * 100, 1) if a and ap and a["taxa"] is not None and ap["taxa"] is not None else None,
             "cts": round(a["ppar"], 2) if a and a["ppar"] is not None else None,
-            "cts_w": round(a["ppar"] - ap["ppar"], 2) if a and ap and a["ppar"] is not None and ap["ppar"] is not None else None,
             "dur": round(a["dur"] / 252, 2) if a and a["dur"] else None,
             "b1": round(wavg(t1), 4) if t1 else None,
             "b1v": round(sum(t["v"] for t in t1) / 1e6, 2) if t1 else None,
             "b1n": len(t1) or None,
-            "bw": round(wavg(ts), 4) if ts else None,
+            "bw": round(bw, 4) if bw is not None else None,
+            "bw_w": round((bw - bwp_prev) * 100, 1) if bw is not None and bwp_prev is not None else None,
             "bwv": round(sum(t["v"] for t in ts) / 1e6, 2) if ts else None,
             "bwn": len(ts) or None,
             "bwp": ppar_of(ts),
@@ -291,6 +323,7 @@ def main():
         "anbima_semana_anterior": d_prev.isoformat() if d_prev else None,
         "b3_ultimo_pregao": d_b3.isoformat() if d_b3 else None,
         "b3_janela": [d.isoformat() for d in dates],
+        "b3_janela_anterior": [p0.isoformat(), p1.isoformat()] if d_b3 else None,
         "corte_volume_rs": MIN_VOL,
         "n_papeis": len(rows),
     }

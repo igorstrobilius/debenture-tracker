@@ -97,6 +97,14 @@ td.num0 { color: var(--muted); font-size: 12px; }
 .up { color: var(--up); } .down { color: var(--down); }
 .strong { font-weight: 600; }
 .vbar { display: inline-block; height: 9px; background: var(--accent); opacity: .35; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+.colpick { position: relative; }
+.colmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 32, 51, .14); padding: 8px; display: grid; gap: 2px; min-width: 220px; max-height: 60vh; overflow: auto; }
+.colmenu label { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.colmenu label:hover { background: var(--hot); }
+.colmenu .act { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.colmenu .act button { appearance: none; border: 0; background: none; color: var(--accent); font: 500 12px var(--f-body); cursor: pointer; padding: 0; }
+.sec { color: var(--muted); }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .notes { color: var(--muted); font-size: 12.5px; line-height: 1.55; max-width: 110ch; display: grid; gap: 4px; }
 .notes b { color: var(--ink); font-weight: 600; }
@@ -126,12 +134,16 @@ td.num0 { color: var(--muted); font-size: 12px; }
         <button class="chip" data-t="CRA" aria-pressed="true">CRA</button>
       </div>
       <label class="chk"><input type="checkbox" id="f-inc"> Só 12.431</label>
-      <label class="chk"><input type="checkbox" id="f-neg"> Só com negócio na semana</label>
+      <label class="chk"><input type="checkbox" id="f-neg"> Só com negócio em 7d</label>
       <select id="lim" aria-label="Linhas">
         <option value="100">100</option><option value="250">250</option><option value="500" selected>500</option><option value="0">Todos</option>
       </select>
       <span class="spacer"></span>
       <span class="count" id="count"></span>
+      <div class="colpick">
+        <button class="btn" id="colbtn" aria-expanded="false" aria-controls="colmenu">Colunas</button>
+        <div class="colmenu" id="colmenu" hidden></div>
+      </div>
       <button class="btn" id="csv">Exportar CSV</button>
     </div>
     <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
@@ -148,6 +160,9 @@ const TABS = [
   { id: "LOW", label: "Abaixo de 40c", unit: "taxa no indexador" },
   { id: "OUTROS", label: "Outros", unit: "%DI e demais" },
 ];
+let hidden = new Set();
+try { hidden = new Set(JSON.parse(localStorage.getItem("dt.hidden") || "[]")); } catch (e) {}
+const saveHidden = () => { try { localStorage.setItem("dt.hidden", JSON.stringify([...hidden])); } catch (e) {} };
 const state = { tab: "DI+", view: "papel", q: "", types: new Set(["DEB","CRI","CRA"]), inc: false, neg: false, lim: 500, sort: null, dir: -1 };
 let DATA = null;
 
@@ -162,7 +177,7 @@ const signed = (v, d = 0, invert = false) => {
 };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function cents(r) { return r.cts != null ? r.cts : r.bwp; }
+function cents(r) { return r.bwp != null ? r.bwp : r.cts; }
 function bucket(r) {
   const c = cents(r);
   if (c != null && c < 40) return "LOW";
@@ -171,36 +186,40 @@ function bucket(r) {
 }
 function ref(r) { return r.bw ?? r.b1 ?? r.a; }
 
+const emiCell = r => {
+  if (r.sec && r.dev) return `<td class="l emi" title="${esc(r.e)} · ${esc(r.sec)}">${esc(r.e)}<span class="sec"> · ${esc(r.sec)}</span></td>`;
+  if (r.sec) return `<td class="l emi" title="${esc(r.sec)} (devedor não identificado)"><span class="sec">${esc(r.sec)}</span></td>`;
+  return `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>`;
+};
 const COLS_PAPEL = [
-  { k: "i", h: "#", get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
-  { k: "c", h: "Papel", l: 1, get: r => r.c, html: r => `<td class="l"><span class="code">${esc(r.c)}</span></td>` },
+  { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
+  { k: "c", h: "Papel", fixed: 1, l: 1, get: r => r.c, html: r => `<td class="l"><span class="code">${esc(r.c)}</span></td>` },
   { k: "t", h: "Tipo", l: 1, get: r => r.t, html: r => `<td class="l"><span class="tag t-${r.t}">${r.t}</span></td>` },
-  { k: "e", h: "Emissor", l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
+  { k: "e", h: "Emissor", l: 1, get: r => r.e, html: emiCell },
   { k: "rem", h: "Remuneração", l: 1, get: r => r.rem, html: r => `<td class="l">${r.rem ? esc(r.rem) : na}</td>` },
+  { k: "b1", h: "Taxa B3", u: "últ. pregão", get: r => r.b1, html: r => `<td>${cell(r.b1, 2)}</td>` },
+  { k: "bw", h: "Taxa B3 7d", u: "méd. pond.", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
   { k: "venc", h: "Venc.", get: r => r.venc, html: r => `<td>${dBR(r.venc) ?? na}</td>` },
-  { k: "inc", h: "Inc.", get: r => r.inc ? 1 : 0, html: r => `<td>${r.inc ? '<span class="inc">12.431</span>' : ""}</td>` },
-  { k: "dur", h: "Duration", u: "anos", get: r => r.dur, html: r => `<td>${cell(r.dur, 1)}</td>` },
-  { k: "bwv", h: "Volume 1s", u: "R$ mm", get: r => r.bwv, html: r => `<td>${r.bwv == null ? na : `<span class="vbar" style="width:${Math.min(40, 4 + Math.sqrt(r.bwv) * 3)}px"></span>${fmt(r.bwv, 1)}`}</td>` },
-  { k: "bwn", h: "Negócios 1s", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
-  { k: "b1", h: "Taxa B3 1d", u: "últ. pregão", get: r => r.b1, html: r => `<td>${cell(r.b1, 2)}</td>` },
-  { k: "bw", h: "Taxa B3 1s", u: "méd. pond.", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
+  { k: "vem", h: "Emissão", u: "R$ mm", get: r => r.vem, html: r => `<td>${cell(r.vem, 0)}</td>` },
+  { k: "bw_w", h: "Δ B3 WoW", u: "bps", get: r => r.bw_w, html: r => `<td>${signed(r.bw_w)}</td>` },
+  { k: "bwv", h: "Volume 7d", u: "R$ mm", get: r => r.bwv, html: r => `<td>${r.bwv == null ? na : `<span class="vbar" style="width:${Math.min(40, 4 + Math.sqrt(r.bwv) * 3)}px"></span>${fmt(r.bwv, 1)}`}</td>` },
+  { k: "bwn", h: "Negócios 7d", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
   { k: "a", h: "Taxa ANBIMA", u: "indicativa", get: r => r.a, html: r => `<td>${cell(r.a, 2)}</td>` },
-  { k: "sp", h: "B3 − ANBIMA", u: "bps", get: r => r.bw != null && r.a != null ? (r.bw - r.a) * 100 : null, html: r => `<td>${signed(r.bw != null && r.a != null ? (r.bw - r.a) * 100 : null)}</td>` },
-  { k: "a_w", h: "Δ ANBIMA 1s", u: "bps", get: r => r.a_w, html: r => `<td>${signed(r.a_w)}</td>` },
-  { k: "cts", h: "BRL cents", u: "ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },
-  { k: "cts_w", h: "Δ cents 1s", get: r => r.cts_w, html: r => `<td>${signed(r.cts_w, 1, true)}</td>` },
-  { k: "bwp", h: "% par B3 1s", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "a_w", h: "Change WoW spread", u: "ANBIMA, bps", get: r => r.a_w, html: r => `<td>${signed(r.a_w)}</td>` },
+  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "dur", h: "Duration", u: "anos", get: r => r.dur, html: r => `<td>${cell(r.dur, 1)}</td>` },
+  { k: "inc", h: "Inc.", get: r => r.inc ? 1 : 0, html: r => `<td>${r.inc ? '<span class="inc">12.431</span>' : ""}</td>` },
   { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
 ];
 
 const COLS_EMI = [
-  { k: "i", h: "#", get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
-  { k: "e", h: "Emissor", l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
+  { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
+  { k: "e", h: "Emissor", fixed: 1, l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
   { k: "n", h: "Papéis", get: r => r.n, html: r => `<td>${r.n}</td>` },
   { k: "papeis", h: "Códigos", l: 1, nosort: true, html: r => `<td class="l"><span class="code">${esc(r.papeis)}</span></td>` },
-  { k: "bwv", h: "Volume 1s", u: "R$ mm", get: r => r.bwv, html: r => `<td>${cell(r.bwv, 1)}</td>` },
-  { k: "bwn", h: "Negócios 1s", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
-  { k: "bw", h: "Taxa B3 1s", u: "pond. por volume", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
+  { k: "bwv", h: "Volume 7d", u: "R$ mm", get: r => r.bwv, html: r => `<td>${cell(r.bwv, 1)}</td>` },
+  { k: "bwn", h: "Negócios 7d", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
+  { k: "bw", h: "Taxa B3 7d", u: "pond. por volume", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
   { k: "a", h: "Taxa ANBIMA", u: "média simples", get: r => r.a, html: r => `<td>${cell(r.a, 2)}</td>` },
   { k: "cmin", h: "Menor cents", get: r => r.cmin, html: r => `<td>${cell(r.cmin, 1)}</td>` },
   { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
@@ -243,7 +262,7 @@ function byEmissor(rows) {
 function sorted(rows, cols) {
   let get;
   if (state.sort) get = cols.find(c => c.k === state.sort)?.get;
-  if (!get) get = state.tab === "LOW" ? (r => r.cts ?? r.bwp ?? r.cmin) : (r => r.ref ?? ref(r));
+  if (!get) get = state.tab === "LOW" ? (r => cents(r) ?? r.cmin) : (r => r.ref ?? ref(r));
   const dir = state.sort ? state.dir : (state.tab === "LOW" ? 1 : -1);
   return rows.map(r => [get(r), r]).sort((a, b) => {
     const x = a[0], y = b[0];
@@ -260,7 +279,8 @@ function render() {
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button class="tab" role="tab" data-tab="${t.id}" aria-selected="${t.id === state.tab}">${t.label}<span class="n">${counts[t.id] || 0}</span></button>`).join("");
 
-  const cols = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+  const all = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+  const cols = all.filter(c => c.fixed || !hidden.has(state.view + ":" + c.k));
   let rows = filtered();
   if (state.view === "emissor") rows = byEmissor(rows);
   rows = sorted(rows, cols);
@@ -298,8 +318,7 @@ function wire() {
   });
   document.querySelector("#tbl thead").addEventListener("click", e => {
     const th = e.target.closest("th"); if (!th) return;
-    const cols = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
-    const c = cols.find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
+    const c = (state.view === "papel" ? COLS_PAPEL : COLS_EMI).find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
     if (state.sort === c.k) state.dir = -state.dir; else { state.sort = c.k; state.dir = c.l ? 1 : -1; }
     render();
   });
@@ -320,6 +339,25 @@ function wire() {
   document.getElementById("f-neg").addEventListener("change", e => { state.neg = e.target.checked; render(); });
   document.getElementById("lim").addEventListener("change", e => { state.lim = +e.target.value; render(); });
   document.getElementById("csv").addEventListener("click", exportCsv);
+  const menu = document.getElementById("colmenu"), cbtn = document.getElementById("colbtn");
+  const buildMenu = () => {
+    const all = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+    menu.innerHTML = `<div class="act"><button data-a="all">Mostrar todas</button><button data-a="close">Fechar</button></div>` +
+      all.filter(c => !c.fixed).map(c => `<label><input type="checkbox" data-k="${c.k}" ${hidden.has(state.view + ":" + c.k) ? "" : "checked"}> ${c.h}${c.u ? ` <span class="sec">(${c.u})</span>` : ""}</label>`).join("");
+  };
+  cbtn.addEventListener("click", e => { e.stopPropagation(); buildMenu(); menu.hidden = !menu.hidden; cbtn.setAttribute("aria-expanded", !menu.hidden); });
+  menu.addEventListener("click", e => {
+    e.stopPropagation();
+    const a = e.target.dataset && e.target.dataset.a;
+    if (a === "close") { menu.hidden = true; cbtn.setAttribute("aria-expanded", false); }
+    if (a === "all") { [...hidden].filter(k => k.startsWith(state.view + ":")).forEach(k => hidden.delete(k)); saveHidden(); buildMenu(); render(); }
+  });
+  menu.addEventListener("change", e => {
+    const k = state.view + ":" + e.target.dataset.k;
+    if (e.target.checked) hidden.delete(k); else hidden.add(k);
+    saveHidden(); render();
+  });
+  document.addEventListener("click", () => { if (!menu.hidden) { menu.hidden = true; cbtn.setAttribute("aria-expanded", false); } });
 }
 
 function header() {
@@ -328,15 +366,17 @@ function header() {
   document.getElementById("dates").innerHTML = [
     `ANBIMA <b>${dBR(m.anbima_data) ?? "n/a"}</b> (vs. <b>${dBR(m.anbima_semana_anterior) ?? "n/a"}</b>)`,
     `B3 último pregão <b>${dBR(m.b3_ultimo_pregao) ?? "n/a"}</b>`,
-    `Janela 1s <b>${jan.length ? dBR(jan[0]) + " a " + dBR(jan[jan.length - 1]) : "n/a"}</b>`,
+    `Janela 7d <b>${jan.length ? dBR(jan[0]) + " a " + dBR(jan[jan.length - 1]) : "n/a"}</b>`,
     `<b>${m.n_papeis.toLocaleString("pt-BR")}</b> papéis`,
   ].map(s => `<span>${s}</span>`).join("");
+  const jp = m.b3_janela_anterior;
   document.getElementById("notes").innerHTML = `
-    <div><b>Taxas B3</b>: média ponderada por volume da taxa de cada negócio do arquivo "Negócio a negócio" da B3 (DEB, CRI e CRA). Ficam de fora negócios cancelados, abaixo de R$ ${m.corte_volume_rs.toLocaleString("pt-BR")} e sem taxa calculada. <b>1d</b> = último pregão; <b>1s</b> = últimos ${jan.length} pregões.</div>
-    <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA.</div>
-    <div><b>BRL cents</b>: % PU par da ANBIMA. <b>% par B3</b>: preço médio dos negócios sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par, em qualquer indexador.</div>
-    <div><b>Taxa ANBIMA de CRI/CRA</b>: n/a nesta versão. Emissor de CRI/CRA aparece como a securitizadora (é o que a B3 publica).</div>
-    <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures) e B3 (Boletim Diário do Mercado, Balcão).</div>`;
+    <div><b>Taxas B3</b>: média ponderada por volume da taxa de cada negócio do arquivo "Negócio a negócio" da B3 (DEB, CRI e CRA). Ficam de fora negócios cancelados, abaixo de R$ ${m.corte_volume_rs.toLocaleString("pt-BR")}, sem taxa calculada e registros repetidos (mesmo papel, horário, quantidade e preço contam uma vez). <b>Últ. pregão</b> = ${dBR(m.b3_ultimo_pregao)}; <b>7d</b> = últimos 7 dias corridos (${jan.length} pregões).</div>
+    <div><b>Δ B3 WoW</b>: taxa B3 7d menos a taxa B3 dos 7 dias anteriores${jp ? ` (${dBR(jp[0])} a ${dBR(jp[1])})` : ""}, em bps; n/a se o papel não negociou nos dois períodos. <b>Change WoW spread</b>: variação da taxa indicativa ANBIMA contra ${dBR(m.anbima_semana_anterior)}.</div>
+    <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA. <b>Emissão</b>: quantidade emitida × PU de emissão (cadastro B3).</div>
+    <div><b>% PU Par B3</b>: preço médio dos negócios de 7d sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
+    <div><b>CRI/CRA</b>: devedor pelo informe mensal das securitizadoras na CVM, seguido da securitizadora em cinza. Quando o informe não identifica um devedor único, aparece só a securitizadora. Taxa ANBIMA de CRI/CRA fica n/a.</div>
+    <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures), B3 (Boletim Diário do Mercado, Balcão) e CVM (dados abertos de securitizadoras).</div>`;
 }
 
 fetch("data/latest.json", { cache: "no-cache" })

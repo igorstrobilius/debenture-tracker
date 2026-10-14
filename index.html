@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Debenture Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: faixa de cabeçalho com datas-base → abas por indexador → barra de filtros → tabela densa com a coluna de taxa B3 em destaque */
+:root {
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --ink: #142033;
+  --muted: #5b6b82;
+  --line: #e2e8f1;
+  --accent: #1d4fa3;
+  --accent-soft: #e6eefb;
+  --hot: #eef3fc;
+  --up: #b4372f;      /* abriu taxa (pior) */
+  --down: #1d7a4b;    /* fechou taxa (melhor) */
+  --deb: #e8eefb; --deb-ink: #2a4f96;
+  --cri: #fbf1df; --cri-ink: #8a5a12;
+  --cra: #e5f4ec; --cra-ink: #23704a;
+  --inc: #e3f5ea; --inc-ink: #1f6d43;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-table: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-code: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e141e; --surface: #151d2a; --ink: #e4eaf3; --muted: #93a2b8; --line: #263245;
+  --accent: #7ea8f0; --accent-soft: #1d2b44; --hot: #18243a; --up: #f08a80; --down: #6fcf9b;
+  --deb: #1d2b44; --deb-ink: #a9c3f3; --cri: #33280f; --cri-ink: #e8c27a; --cra: #14301f; --cra-ink: #8fdbb0;
+  --inc: #14301f; --inc-ink: #8fdbb0; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e141e; --surface: #151d2a; --ink: #e4eaf3; --muted: #93a2b8; --line: #263245;
+  --accent: #7ea8f0; --accent-soft: #1d2b44; --hot: #18243a; --up: #f08a80; --down: #6fcf9b;
+  --deb: #1d2b44; --deb-ink: #a9c3f3; --cri: #33280f; --cri-ink: #e8c27a; --cra: #14301f; --cra-ink: #8fdbb0;
+  --inc: #14301f; --inc-ink: #8fdbb0; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 24px; }
+h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+h1 span { color: var(--accent); }
+.dates { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 12.5px; }
+.dates b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
+.tab { appearance: none; border: 0; background: none; color: var(--muted); font: 600 14px var(--f-body); padding: 8px 12px 9px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.tab .n { font-weight: 500; font-size: 12px; margin-left: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.seg { display: inline-flex; background: var(--bg); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button { appearance: none; border: 0; background: none; color: var(--muted); font: 500 13px var(--f-body); padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+input[type="search"], select { font: 13px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; }
+input[type="search"] { width: min(260px, 100%); }
+label.chk { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.chips { display: inline-flex; gap: 4px; }
+.chip { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: 600 11.5px var(--f-body); padding: 4px 9px; border-radius: 6px; cursor: pointer; letter-spacing: .03em; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.spacer { flex: 1; }
+.count { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.btn { appearance: none; font: 500 13px var(--f-body); color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+
+.tablebox { overflow: auto; max-height: calc(100vh - 230px); min-height: 300px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font: 13.5px/1.3 var(--f-table); font-variant-numeric: tabular-nums; }
+thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); color: var(--ink); font-weight: 600; text-align: right; white-space: nowrap;
+  padding: 9px 10px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; }
+thead th.l { text-align: left; }
+thead th .u { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+thead th[aria-sort="descending"]::after { content: " ▾"; color: var(--accent); }
+thead th[aria-sort="ascending"]::after { content: " ▴"; color: var(--accent); }
+tbody td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+tbody td.l { text-align: left; }
+tbody tr:hover td { background: var(--hot); }
+.hotcol { background: var(--hot); }
+thead th.hotcol { background: var(--hot); }
+td.num0 { color: var(--muted); font-size: 12px; }
+.code { font: 500 12.5px var(--f-code); color: var(--accent); }
+.emi { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.na { color: var(--muted); opacity: .7; }
+.tag { display: inline-block; font: 600 11px var(--f-body); padding: 2px 6px; border-radius: 4px; letter-spacing: .03em; }
+.t-DEB { background: var(--deb); color: var(--deb-ink); }
+.t-CRI { background: var(--cri); color: var(--cri-ink); }
+.t-CRA { background: var(--cra); color: var(--cra-ink); }
+.inc { background: var(--inc); color: var(--inc-ink); font: 600 11px var(--f-body); padding: 2px 6px; border-radius: 4px; }
+.up { color: var(--up); } .down { color: var(--down); }
+.strong { font-weight: 600; }
+.vbar { display: inline-block; height: 9px; background: var(--accent); opacity: .35; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+.notes { color: var(--muted); font-size: 12.5px; line-height: 1.55; max-width: 110ch; display: grid; gap: 4px; }
+.notes b { color: var(--ink); font-weight: 600; }
+@media (max-width: 640px) { .tablebox { max-height: none; } h1 { font-size: 19px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Debenture <span>Tracker</span></h1>
+    <div class="dates" id="dates">Carregando dados…</div>
+  </header>
+
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+
+  <section class="panel">
+    <div class="bar">
+      <div class="seg" role="group" aria-label="Visão">
+        <button id="v-papel" aria-pressed="true">Por papel</button>
+        <button id="v-emissor" aria-pressed="false">Por emissor</button>
+      </div>
+      <input type="search" id="q" placeholder="Filtrar papel / emissor…" aria-label="Filtrar papel ou emissor">
+      <div class="chips" role="group" aria-label="Tipo">
+        <button class="chip" data-t="DEB" aria-pressed="true">DEB</button>
+        <button class="chip" data-t="CRI" aria-pressed="true">CRI</button>
+        <button class="chip" data-t="CRA" aria-pressed="true">CRA</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="f-inc"> Só 12.431</label>
+      <label class="chk"><input type="checkbox" id="f-neg"> Só com negócio na semana</label>
+      <select id="lim" aria-label="Linhas">
+        <option value="100">100</option><option value="250">250</option><option value="500" selected>500</option><option value="0">Todos</option>
+      </select>
+      <span class="spacer"></span>
+      <span class="count" id="count"></span>
+      <button class="btn" id="csv">Exportar CSV</button>
+    </div>
+    <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <div class="notes" id="notes"></div>
+</div>
+
+<script>
+const TABS = [
+  { id: "DI+", label: "DI+", unit: "spread % a.a." },
+  { id: "IPCA+", label: "IPCA+", unit: "taxa real % a.a." },
+  { id: "PRE", label: "Pré", unit: "taxa % a.a." },
+  { id: "LOW", label: "Abaixo de 40c", unit: "taxa no indexador" },
+  { id: "OUTROS", label: "Outros", unit: "%DI e demais" },
+];
+const state = { tab: "DI+", view: "papel", q: "", types: new Set(["DEB","CRI","CRA"]), inc: false, neg: false, lim: 500, sort: null, dir: -1 };
+let DATA = null;
+
+const fmt = (v, d = 2) => v == null ? null : v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const na = '<span class="na">n/a</span>';
+const cell = (v, d = 2) => v == null ? na : fmt(v, d);
+const dBR = s => s ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(2, 4) : null;
+const signed = (v, d = 0, invert = false) => {
+  if (v == null) return na;
+  const cls = v > 0 ? (invert ? "down" : "up") : v < 0 ? (invert ? "up" : "down") : "";
+  return `<span class="${cls}">${v > 0 ? "+" : ""}${fmt(v, d)}</span>`;
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function cents(r) { return r.cts != null ? r.cts : r.bwp; }
+function bucket(r) {
+  const c = cents(r);
+  if (c != null && c < 40) return "LOW";
+  if (r.idx === "%DI") return "OUTROS";
+  return r.idx;
+}
+function ref(r) { return r.bw ?? r.b1 ?? r.a; }
+
+const COLS_PAPEL = [
+  { k: "i", h: "#", get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
+  { k: "c", h: "Papel", l: 1, get: r => r.c, html: r => `<td class="l"><span class="code">${esc(r.c)}</span></td>` },
+  { k: "t", h: "Tipo", l: 1, get: r => r.t, html: r => `<td class="l"><span class="tag t-${r.t}">${r.t}</span></td>` },
+  { k: "e", h: "Emissor", l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
+  { k: "rem", h: "Remuneração", l: 1, get: r => r.rem, html: r => `<td class="l">${r.rem ? esc(r.rem) : na}</td>` },
+  { k: "venc", h: "Venc.", get: r => r.venc, html: r => `<td>${dBR(r.venc) ?? na}</td>` },
+  { k: "inc", h: "Inc.", get: r => r.inc ? 1 : 0, html: r => `<td>${r.inc ? '<span class="inc">12.431</span>' : ""}</td>` },
+  { k: "dur", h: "Duration", u: "anos", get: r => r.dur, html: r => `<td>${cell(r.dur, 1)}</td>` },
+  { k: "bwv", h: "Volume 1s", u: "R$ mm", get: r => r.bwv, html: r => `<td>${r.bwv == null ? na : `<span class="vbar" style="width:${Math.min(40, 4 + Math.sqrt(r.bwv) * 3)}px"></span>${fmt(r.bwv, 1)}`}</td>` },
+  { k: "bwn", h: "Negócios 1s", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
+  { k: "b1", h: "Taxa B3 1d", u: "últ. pregão", get: r => r.b1, html: r => `<td>${cell(r.b1, 2)}</td>` },
+  { k: "bw", h: "Taxa B3 1s", u: "méd. pond.", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
+  { k: "a", h: "Taxa ANBIMA", u: "indicativa", get: r => r.a, html: r => `<td>${cell(r.a, 2)}</td>` },
+  { k: "sp", h: "B3 − ANBIMA", u: "bps", get: r => r.bw != null && r.a != null ? (r.bw - r.a) * 100 : null, html: r => `<td>${signed(r.bw != null && r.a != null ? (r.bw - r.a) * 100 : null)}</td>` },
+  { k: "a_w", h: "Δ ANBIMA 1s", u: "bps", get: r => r.a_w, html: r => `<td>${signed(r.a_w)}</td>` },
+  { k: "cts", h: "BRL cents", u: "ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },
+  { k: "cts_w", h: "Δ cents 1s", get: r => r.cts_w, html: r => `<td>${signed(r.cts_w, 1, true)}</td>` },
+  { k: "bwp", h: "% par B3 1s", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
+];
+
+const COLS_EMI = [
+  { k: "i", h: "#", get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
+  { k: "e", h: "Emissor", l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
+  { k: "n", h: "Papéis", get: r => r.n, html: r => `<td>${r.n}</td>` },
+  { k: "papeis", h: "Códigos", l: 1, nosort: true, html: r => `<td class="l"><span class="code">${esc(r.papeis)}</span></td>` },
+  { k: "bwv", h: "Volume 1s", u: "R$ mm", get: r => r.bwv, html: r => `<td>${cell(r.bwv, 1)}</td>` },
+  { k: "bwn", h: "Negócios 1s", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
+  { k: "bw", h: "Taxa B3 1s", u: "pond. por volume", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
+  { k: "a", h: "Taxa ANBIMA", u: "média simples", get: r => r.a, html: r => `<td>${cell(r.a, 2)}</td>` },
+  { k: "cmin", h: "Menor cents", get: r => r.cmin, html: r => `<td>${cell(r.cmin, 1)}</td>` },
+  { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
+];
+
+function filtered() {
+  const q = state.q.trim().toLowerCase();
+  return DATA.rows.filter(r => bucket(r) === state.tab
+    && state.types.has(r.t)
+    && (!state.inc || r.inc)
+    && (!state.neg || r.bwn)
+    && (!q || r.c.toLowerCase().includes(q) || (r.e || "").toLowerCase().includes(q)));
+}
+
+function byEmissor(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const k = r.e || "—";
+    if (!m.has(k)) m.set(k, { e: k, list: [] });
+    m.get(k).list.push(r);
+  }
+  return [...m.values()].map(g => {
+    const L = g.list, tr = L.filter(r => r.bw != null && r.bwv);
+    const vol = tr.reduce((s, r) => s + r.bwv, 0);
+    const an = L.filter(r => r.a != null);
+    const cs = L.map(r => r.cts).filter(v => v != null);
+    return {
+      e: g.e, n: L.length, papeis: L.map(r => r.c).slice(0, 6).join(", ") + (L.length > 6 ? "…" : ""),
+      bwv: L.reduce((s, r) => s + (r.bwv || 0), 0) || null,
+      bwn: L.reduce((s, r) => s + (r.bwn || 0), 0) || null,
+      bw: vol ? tr.reduce((s, r) => s + r.bw * r.bwv, 0) / vol : null,
+      a: an.length ? an.reduce((s, r) => s + r.a, 0) / an.length : null,
+      cmin: cs.length ? Math.min(...cs) : null,
+      last: L.map(r => r.last).filter(Boolean).sort().pop() || null,
+      ref: vol ? tr.reduce((s, r) => s + r.bw * r.bwv, 0) / vol : (an.length ? an.reduce((s, r) => s + r.a, 0) / an.length : null),
+    };
+  });
+}
+
+function sorted(rows, cols) {
+  let get;
+  if (state.sort) get = cols.find(c => c.k === state.sort)?.get;
+  if (!get) get = state.tab === "LOW" ? (r => r.cts ?? r.bwp ?? r.cmin) : (r => r.ref ?? ref(r));
+  const dir = state.sort ? state.dir : (state.tab === "LOW" ? 1 : -1);
+  return rows.map(r => [get(r), r]).sort((a, b) => {
+    const x = a[0], y = b[0];
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  }).map(p => p[1]);
+}
+
+function render() {
+  const counts = {};
+  for (const r of DATA.rows) if (state.types.has(r.t)) counts[bucket(r)] = (counts[bucket(r)] || 0) + 1;
+  document.getElementById("tabs").innerHTML = TABS.map(t =>
+    `<button class="tab" role="tab" data-tab="${t.id}" aria-selected="${t.id === state.tab}">${t.label}<span class="n">${counts[t.id] || 0}</span></button>`).join("");
+
+  const cols = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+  let rows = filtered();
+  if (state.view === "emissor") rows = byEmissor(rows);
+  rows = sorted(rows, cols);
+  const total = rows.length;
+  const shown = state.lim ? rows.slice(0, state.lim) : rows;
+
+  const thead = document.querySelector("#tbl thead");
+  thead.innerHTML = "<tr>" + cols.map(c =>
+    `<th class="${c.l ? "l" : ""} ${c.hot ? "hotcol" : ""}" data-k="${c.k}" ${state.sort === c.k ? `aria-sort="${state.dir < 0 ? "descending" : "ascending"}"` : ""}>${c.h}${c.u ? `<span class="u">${c.u}</span>` : ""}</th>`).join("") + "</tr>";
+  const tb = document.querySelector("#tbl tbody");
+  tb.innerHTML = shown.length
+    ? shown.map((r, i) => "<tr>" + cols.map(c => c.html(r, i)).join("") + "</tr>").join("")
+    : `<tr><td class="empty" colspan="${cols.length}">Nenhum papel com esses filtros.</td></tr>`;
+  document.getElementById("count").textContent =
+    `${shown.length.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")} ${state.view === "papel" ? "papéis" : "emissores"}`;
+  window.__last = { cols, rows };
+}
+
+function exportCsv() {
+  const { cols, rows } = window.__last;
+  const use = cols.filter(c => c.get && c.k !== "i");
+  const lines = [use.map(c => c.h + (c.u ? ` (${c.u})` : "")).join(";")];
+  for (const r of rows) lines.push(use.map(c => { const v = c.get(r); return v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : `"${String(v).replace(/"/g, '""')}"`; }).join(";"));
+  const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `debentures_${state.tab.replace("+", "")}_${DATA.meta.b3_ultimo_pregao || "dados"}.csv`;
+  a.click();
+}
+
+function wire() {
+  document.getElementById("tabs").addEventListener("click", e => {
+    const b = e.target.closest(".tab"); if (!b) return;
+    state.tab = b.dataset.tab; state.sort = null; render();
+  });
+  document.querySelector("#tbl thead").addEventListener("click", e => {
+    const th = e.target.closest("th"); if (!th) return;
+    const cols = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+    const c = cols.find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
+    if (state.sort === c.k) state.dir = -state.dir; else { state.sort = c.k; state.dir = c.l ? 1 : -1; }
+    render();
+  });
+  for (const v of ["papel", "emissor"]) document.getElementById("v-" + v).addEventListener("click", () => {
+    state.view = v; state.sort = null;
+    document.getElementById("v-papel").setAttribute("aria-pressed", v === "papel");
+    document.getElementById("v-emissor").setAttribute("aria-pressed", v === "emissor");
+    render();
+  });
+  document.getElementById("q").addEventListener("input", e => { state.q = e.target.value; render(); });
+  document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {
+    const t = b.dataset.t;
+    if (state.types.has(t) && state.types.size > 1) state.types.delete(t); else state.types.add(t);
+    document.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", state.types.has(x.dataset.t)));
+    render();
+  }));
+  document.getElementById("f-inc").addEventListener("change", e => { state.inc = e.target.checked; render(); });
+  document.getElementById("f-neg").addEventListener("change", e => { state.neg = e.target.checked; render(); });
+  document.getElementById("lim").addEventListener("change", e => { state.lim = +e.target.value; render(); });
+  document.getElementById("csv").addEventListener("click", exportCsv);
+}
+
+function header() {
+  const m = DATA.meta;
+  const jan = m.b3_janela || [];
+  document.getElementById("dates").innerHTML = [
+    `ANBIMA <b>${dBR(m.anbima_data) ?? "n/a"}</b> (vs. <b>${dBR(m.anbima_semana_anterior) ?? "n/a"}</b>)`,
+    `B3 último pregão <b>${dBR(m.b3_ultimo_pregao) ?? "n/a"}</b>`,
+    `Janela 1s <b>${jan.length ? dBR(jan[0]) + " a " + dBR(jan[jan.length - 1]) : "n/a"}</b>`,
+    `<b>${m.n_papeis.toLocaleString("pt-BR")}</b> papéis`,
+  ].map(s => `<span>${s}</span>`).join("");
+  document.getElementById("notes").innerHTML = `
+    <div><b>Taxas B3</b>: média ponderada por volume da taxa de cada negócio do arquivo "Negócio a negócio" da B3 (DEB, CRI e CRA). Ficam de fora negócios cancelados, abaixo de R$ ${m.corte_volume_rs.toLocaleString("pt-BR")} e sem taxa calculada. <b>1d</b> = último pregão; <b>1s</b> = últimos ${jan.length} pregões.</div>
+    <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA.</div>
+    <div><b>BRL cents</b>: % PU par da ANBIMA. <b>% par B3</b>: preço médio dos negócios sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par, em qualquer indexador.</div>
+    <div><b>Taxa ANBIMA de CRI/CRA</b>: n/a nesta versão. Emissor de CRI/CRA aparece como a securitizadora (é o que a B3 publica).</div>
+    <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures) e B3 (Boletim Diário do Mercado, Balcão).</div>`;
+}
+
+fetch("data/latest.json", { cache: "no-cache" })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => { DATA = d; header(); wire(); render(); })
+  .catch(e => { document.getElementById("dates").textContent = "Não consegui carregar os dados (" + e.message + "). Tente recarregar a página."; });
+</script>
+</body>
+</html>

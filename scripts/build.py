@@ -209,6 +209,7 @@ def to_iso(s):
 
 
 def wavg(ts):
+    ts = [t for t in ts if t["r"] is not None]   # negócios só em PU (sem taxa) não entram na média de taxa
     v = sum(t["v"] for t in ts)
     return (sum(t["r"] * t["v"] for t in ts) / v) if v else None
 
@@ -242,8 +243,12 @@ def main():
         seen.add(k)
         uniq.append(t)
     log(f"  {len(trades)} negócios, {len(uniq)} após remover repetidos")
-    valid = [t for t in uniq if t["sit"] != "Cancelado" and t["r"] is not None
-             and t["v"] is not None and t["v"] >= MIN_VOL and abs(t["r"]) < 100]
+    # negócios sem taxa (ex.: papéis em recuperação, negociados só em PU) entram em volume, nº de negócios e % PU par
+    valid = [t for t in uniq if "Cancelado" not in t["sit"]
+             and t["v"] is not None and t["v"] >= MIN_VOL and (t["r"] is None or abs(t["r"]) < 100)]
+    for t in valid:
+        if t["r"] is not None and abs(t["r"]) >= 100:
+            t["r"] = None
     dates = sorted({t["d"] for t in uniq if d_b3 and w0 <= t["d"] <= d_b3})
     log(f"  janela 7d {dates}: {len(valid)} válidos no total")
 
@@ -305,7 +310,7 @@ def main():
             "a_w": round((a["taxa"] - ap["taxa"]) * 100, 1) if a and ap and a["taxa"] is not None and ap["taxa"] is not None else None,
             "cts": round(a["ppar"], 2) if a and a["ppar"] is not None else None,
             "dur": round(a["dur"] / 252, 2) if a and a["dur"] else None,
-            "b1": round(wavg(t1), 4) if t1 else None,
+            "b1": round(wavg(t1), 4) if t1 and wavg(t1) is not None else None,
             "b1v": round(sum(t["v"] for t in t1) / 1e6, 2) if t1 else None,
             "b1n": len(t1) or None,
             "bw": round(bw, 4) if bw is not None else None,

@@ -301,6 +301,9 @@ def main():
             v = sum(t["v"] for t in sub)
             q = sum(t["q"] or 0 for t in sub)
             return round(v / q / par * 100, 2) if q else None
+        def pu_of(sub):
+            q = sum(t["q"] or 0 for t in sub)
+            return round(sum(t["v"] for t in sub) / q, 2) if sub and q else None
         tp = byp.get(c, [])
         bw, bwp_prev = (wavg(ts) if ts else None), (wavg(tp) if tp else None)
         row = {
@@ -318,6 +321,7 @@ def main():
             "bwv": round(sum(t["v"] for t in ts) / 1e6, 2) if ts else None,
             "bwn": len(ts) or None,
             "bwp": ppar_of(ts),
+            "pu1": pu_of(t1), "puw": pu_of(ts),
             "last": last.isoformat() if last else None,
         }
         rows.append(row)

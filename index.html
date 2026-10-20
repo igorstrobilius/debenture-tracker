@@ -158,6 +158,7 @@ const TABS = [
   { id: "IPCA+", label: "IPCA+", unit: "taxa real % a.a." },
   { id: "PRE", label: "Pré", unit: "taxa % a.a." },
   { id: "LOW", label: "Abaixo de 40c", unit: "taxa no indexador" },
+  { id: "NOTAXA", label: "Sem taxa", unit: "negociados só em preço" },
   { id: "OUTROS", label: "Outros", unit: "%DI e demais" },
 ];
 let hidden = new Set();
@@ -181,6 +182,7 @@ function cents(r) { return r.bwp != null ? r.bwp : r.cts; }
 function bucket(r) {
   const c = cents(r);
   if (c != null && c < 40) return "LOW";
+  if (r.bw == null && r.b1 == null && r.a == null) return "NOTAXA";
   if (r.idx === "%DI") return "OUTROS";
   return r.idx;
 }
@@ -212,6 +214,14 @@ const COLS_PAPEL = [
   { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
 ];
 
+const COLS_NOTAXA = [
+  ...COLS_PAPEL.filter(c => ["i", "c", "t", "e", "rem"].includes(c.k)),
+  { k: "pu1", h: "PU B3", u: "últ. pregão, R$", get: r => r.pu1, html: r => `<td>${cell(r.pu1, 2)}</td>` },
+  { k: "puw", h: "PU B3 7d", u: "méd. pond., R$", hot: 1, get: r => r.puw, html: r => `<td class="hotcol strong">${cell(r.puw, 2)}</td>` },
+  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "cts", h: "% PU Par ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },
+  ...COLS_PAPEL.filter(c => ["venc", "vem", "bwv", "bwn", "inc", "last"].includes(c.k)),
+];
 const COLS_EMI = [
   { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
   { k: "e", h: "Emissor", fixed: 1, l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
@@ -262,8 +272,8 @@ function byEmissor(rows) {
 function sorted(rows, cols) {
   let get;
   if (state.sort) get = cols.find(c => c.k === state.sort)?.get;
-  if (!get) get = state.tab === "LOW" ? (r => cents(r) ?? r.cmin) : (r => r.ref ?? ref(r));
-  const dir = state.sort ? state.dir : (state.tab === "LOW" ? 1 : -1);
+  if (!get) get = (state.tab === "LOW" || state.tab === "NOTAXA") ? (r => cents(r) ?? r.cmin) : (r => r.ref ?? ref(r));
+  const dir = state.sort ? state.dir : ((state.tab === "LOW" || state.tab === "NOTAXA") ? 1 : -1);
   return rows.map(r => [get(r), r]).sort((a, b) => {
     const x = a[0], y = b[0];
     if (x == null && y == null) return 0;
@@ -279,7 +289,7 @@ function render() {
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button class="tab" role="tab" data-tab="${t.id}" aria-selected="${t.id === state.tab}">${t.label}<span class="n">${counts[t.id] || 0}</span></button>`).join("");
 
-  const all = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+  const all = state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI;
   const cols = all.filter(c => c.fixed || !hidden.has(state.view + ":" + c.k));
   let rows = filtered();
   if (state.view === "emissor") rows = byEmissor(rows);
@@ -318,7 +328,7 @@ function wire() {
   });
   document.querySelector("#tbl thead").addEventListener("click", e => {
     const th = e.target.closest("th"); if (!th) return;
-    const c = (state.view === "papel" ? COLS_PAPEL : COLS_EMI).find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
+    const c = (state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI).find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
     if (state.sort === c.k) state.dir = -state.dir; else { state.sort = c.k; state.dir = c.l ? 1 : -1; }
     render();
   });
@@ -341,7 +351,7 @@ function wire() {
   document.getElementById("csv").addEventListener("click", exportCsv);
   const menu = document.getElementById("colmenu"), cbtn = document.getElementById("colbtn");
   const buildMenu = () => {
-    const all = state.view === "papel" ? COLS_PAPEL : COLS_EMI;
+    const all = state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI;
     menu.innerHTML = `<div class="act"><button data-a="all">Mostrar todas</button><button data-a="close">Fechar</button></div>` +
       all.filter(c => !c.fixed).map(c => `<label><input type="checkbox" data-k="${c.k}" ${hidden.has(state.view + ":" + c.k) ? "" : "checked"}> ${c.h}${c.u ? ` <span class="sec">(${c.u})</span>` : ""}</label>`).join("");
   };

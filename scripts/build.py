@@ -13,7 +13,7 @@ Regras:
 """
 import csv, io, json, os, sys, time, datetime as dt, urllib.request, urllib.error
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import devedores
+import devedores, bonds
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "data")
@@ -337,7 +337,14 @@ def main():
         "n_papeis": len(rows),
     }
     os.makedirs(os.path.join(OUT, "history"), exist_ok=True)
-    payload = {"meta": meta, "rows": rows}
+    log("TradingView bonds...")
+    try:
+        bond_rows = bonds.load()
+        meta["bonds_em"] = dt.datetime.now(dt.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
+    except Exception as e:  # noqa
+        log(f"  TradingView indisponível: {e}")
+        bond_rows = []
+    payload = {"meta": meta, "rows": rows, "bonds": bond_rows}
     with open(os.path.join(OUT, "latest.json"), "w") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
     if d_b3:

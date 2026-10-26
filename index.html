@@ -98,6 +98,7 @@ td.num0 { color: var(--muted); font-size: 12px; }
 .strong { font-weight: 600; }
 .vbar { display: inline-block; height: 9px; background: var(--accent); opacity: .35; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
 .colpick { position: relative; }
+[hidden] { display: none !important; }
 .colmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 8px 24px rgba(20, 32, 51, .14); padding: 8px; display: grid; gap: 2px; min-width: 220px; max-height: 60vh; overflow: auto; }
 .colmenu label { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -160,6 +161,7 @@ const TABS = [
   { id: "LOW", label: "Abaixo de 40c", unit: "taxa no indexador" },
   { id: "NOTAXA", label: "Sem taxa", unit: "negociados só em preço" },
   { id: "OUTROS", label: "Outros", unit: "%DI e demais" },
+  { id: "BONDS", label: "Bonds offshore", unit: "TradingView" },
 ];
 let hidden = new Set();
 try { hidden = new Set(JSON.parse(localStorage.getItem("dt.hidden") || "[]")); } catch (e) {}
@@ -222,6 +224,19 @@ const COLS_NOTAXA = [
   { k: "cts", h: "% PU Par ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },
   ...COLS_PAPEL.filter(c => ["venc", "vem", "bwv", "bwn", "inc", "last"].includes(c.k)),
 ];
+const COLS_BONDS = [
+  { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
+  { k: "e", h: "Emissor", fixed: 1, l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.bond)}">${esc(r.e)}<span class="sec"> · ${esc(r.bond)}</span></td>` },
+  { k: "ytw", h: "YTW", u: "%", hot: 1, get: r => r.ytw, html: r => `<td class="hotcol strong">${cell(r.ytw, 2)}</td>` },
+  { k: "px", h: "Preço", u: "% do par", get: r => r.px, html: r => `<td>${cell(r.px, 2)}</td>` },
+  { k: "amt", h: "Emissão", u: "mm", get: r => r.amt, html: r => `<td>${cell(r.amt, 0)}</td>` },
+  { k: "venc", h: "Venc.", get: r => r.venc, html: r => `<td>${r.perp ? "Perpétuo" : (dBR(r.venc) ?? na)}</td>` },
+  { k: "cpn", h: "Cupom", u: "% a.a.", get: r => r.cpn, html: r => `<td>${cell(r.cpn, 3)}</td>` },
+  { k: "ccy", h: "Moeda", l: 1, get: r => r.ccy, html: r => `<td class="l">${r.ccy ? esc(r.ccy) : na}</td>` },
+  { k: "venue", h: "Fonte", l: 1, get: r => r.venue, html: r => `<td class="l"><a class="code" href="https://www.tradingview.com/symbols/${esc(r.sym.replace(":", "-"))}/" target="_blank" rel="noopener">${esc(r.venue)}</a></td>` },
+];
+const hkey = () => state.tab === "BONDS" ? "bonds" : state.view;
+const colsFor = () => state.tab === "BONDS" ? COLS_BONDS : state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI;
 const COLS_EMI = [
   { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
   { k: "e", h: "Emissor", fixed: 1, l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.e)}">${esc(r.e)}</td>` },
@@ -237,6 +252,7 @@ const COLS_EMI = [
 
 function filtered() {
   const q = state.q.trim().toLowerCase();
+  if (state.tab === "BONDS") return (DATA.bonds || []).filter(r => !q || (r.e + " " + r.bond).toLowerCase().includes(q));
   return DATA.rows.filter(r => bucket(r) === state.tab
     && state.types.has(r.t)
     && (!state.inc || r.inc)
@@ -272,6 +288,7 @@ function byEmissor(rows) {
 function sorted(rows, cols) {
   let get;
   if (state.sort) get = cols.find(c => c.k === state.sort)?.get;
+  if (!get && state.tab === "BONDS") get = r => r.ytw ?? (200 - (r.px ?? 100));
   if (!get) get = (state.tab === "LOW" || state.tab === "NOTAXA") ? (r => cents(r) ?? r.cmin) : (r => r.ref ?? ref(r));
   const dir = state.sort ? state.dir : ((state.tab === "LOW" || state.tab === "NOTAXA") ? 1 : -1);
   return rows.map(r => [get(r), r]).sort((a, b) => {
@@ -286,13 +303,14 @@ function sorted(rows, cols) {
 function render() {
   const counts = {};
   for (const r of DATA.rows) if (state.types.has(r.t)) counts[bucket(r)] = (counts[bucket(r)] || 0) + 1;
+  counts.BONDS = (DATA.bonds || []).length;
   document.getElementById("tabs").innerHTML = TABS.map(t =>
     `<button class="tab" role="tab" data-tab="${t.id}" aria-selected="${t.id === state.tab}">${t.label}<span class="n">${counts[t.id] || 0}</span></button>`).join("");
 
-  const all = state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI;
-  const cols = all.filter(c => c.fixed || !hidden.has(state.view + ":" + c.k));
+  const all = colsFor();
+  const cols = all.filter(c => c.fixed || !hidden.has(hkey() + ":" + c.k));
   let rows = filtered();
-  if (state.view === "emissor") rows = byEmissor(rows);
+  if (state.view === "emissor" && state.tab !== "BONDS") rows = byEmissor(rows);
   rows = sorted(rows, cols);
   const total = rows.length;
   const shown = state.lim ? rows.slice(0, state.lim) : rows;
@@ -328,7 +346,7 @@ function wire() {
   });
   document.querySelector("#tbl thead").addEventListener("click", e => {
     const th = e.target.closest("th"); if (!th) return;
-    const c = (state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI).find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
+    const c = colsFor().find(x => x.k === th.dataset.k); if (!c || c.nosort) return;
     if (state.sort === c.k) state.dir = -state.dir; else { state.sort = c.k; state.dir = c.l ? 1 : -1; }
     render();
   });
@@ -351,19 +369,19 @@ function wire() {
   document.getElementById("csv").addEventListener("click", exportCsv);
   const menu = document.getElementById("colmenu"), cbtn = document.getElementById("colbtn");
   const buildMenu = () => {
-    const all = state.view === "papel" ? (state.tab === "NOTAXA" ? COLS_NOTAXA : COLS_PAPEL) : COLS_EMI;
+    const all = colsFor();
     menu.innerHTML = `<div class="act"><button data-a="all">Mostrar todas</button><button data-a="close">Fechar</button></div>` +
-      all.filter(c => !c.fixed).map(c => `<label><input type="checkbox" data-k="${c.k}" ${hidden.has(state.view + ":" + c.k) ? "" : "checked"}> ${c.h}${c.u ? ` <span class="sec">(${c.u})</span>` : ""}</label>`).join("");
+      all.filter(c => !c.fixed).map(c => `<label><input type="checkbox" data-k="${c.k}" ${hidden.has(hkey() + ":" + c.k) ? "" : "checked"}> ${c.h}${c.u ? ` <span class="sec">(${c.u})</span>` : ""}</label>`).join("");
   };
   cbtn.addEventListener("click", e => { e.stopPropagation(); buildMenu(); menu.hidden = !menu.hidden; cbtn.setAttribute("aria-expanded", !menu.hidden); });
   menu.addEventListener("click", e => {
     e.stopPropagation();
     const a = e.target.dataset && e.target.dataset.a;
     if (a === "close") { menu.hidden = true; cbtn.setAttribute("aria-expanded", false); }
-    if (a === "all") { [...hidden].filter(k => k.startsWith(state.view + ":")).forEach(k => hidden.delete(k)); saveHidden(); buildMenu(); render(); }
+    if (a === "all") { [...hidden].filter(k => k.startsWith(hkey() + ":")).forEach(k => hidden.delete(k)); saveHidden(); buildMenu(); render(); }
   });
   menu.addEventListener("change", e => {
-    const k = state.view + ":" + e.target.dataset.k;
+    const k = hkey() + ":" + e.target.dataset.k;
     if (e.target.checked) hidden.delete(k); else hidden.add(k);
     saveHidden(); render();
   });
@@ -386,6 +404,7 @@ function header() {
     <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA. <b>Emissão</b>: quantidade emitida × PU de emissão (cadastro B3).</div>
     <div><b>% PU Par B3</b>: preço médio dos negócios de 7d sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
     <div><b>CRI/CRA</b>: devedor pelo informe mensal das securitizadoras na CVM, seguido da securitizadora em cinza. Quando o informe não identifica um devedor único, aparece só a securitizadora. Taxa ANBIMA de CRI/CRA fica n/a.</div>
+    <div><b>Bonds offshore</b>: bonds de emissores brasileiros no screener do TradingView com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 80 (distressed). Preço e YTW são os do TradingView, sem cálculo próprio; a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond.</div>
     <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures), B3 (Boletim Diário do Mercado, Balcão) e CVM (dados abertos de securitizadoras).</div>`;
 }
 

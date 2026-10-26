@@ -2,7 +2,7 @@
 
 Universo = (1) screener de bonds do TradingView com país de risco Brasil
          + (2) busca por cada termo de data/bonds_emissores.txt (o screener não indexa todos os bonds).
-Filtro: emissor corporativo e (YTW >= 7,5%  ou  sem YTW publicado e preço < 80).
+Filtro: emissor corporativo e (YTW >= 7,5%  ou  sem YTW publicado e preço < 90).
 Preço e YTW são os do TradingView, sem cálculo próprio.
 """
 import json, os, re, time, datetime as dt, urllib.parse, urllib.request
@@ -16,7 +16,7 @@ FIELDS = ["description", "bond_issuer_cr_parent", "yield_to_worst", "close", "cu
 BASE = [{"left": "country", "operation": "equal", "right": "Brazil"},
         {"left": "bond_issuer_type", "operation": "equal", "right": "corporate"}]
 VENUE_RANK = {"FINRA": 0, "BONDSCOM": 1, "LUXSE": 2}
-MIN_YTW, DISTRESSED_PX = 7.5, 80
+MIN_YTW, DISTRESSED_PX = 7.5, 90
 TODAY = int(dt.date.today().strftime("%Y%m%d"))
 
 

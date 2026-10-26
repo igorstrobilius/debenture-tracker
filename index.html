@@ -404,7 +404,7 @@ function header() {
     <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA. <b>Emissão</b>: quantidade emitida × PU de emissão (cadastro B3).</div>
     <div><b>% PU Par B3</b>: preço médio dos negócios de 7d sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
     <div><b>CRI/CRA</b>: devedor pelo informe mensal das securitizadoras na CVM, seguido da securitizadora em cinza. Quando o informe não identifica um devedor único, aparece só a securitizadora. Taxa ANBIMA de CRI/CRA fica n/a.</div>
-    <div><b>Bonds offshore</b>: bonds de emissores brasileiros no screener do TradingView com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 80 (distressed). Preço e YTW são os do TradingView, sem cálculo próprio; a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond.</div>
+    <div><b>Bonds offshore</b>: bonds de emissores brasileiros no TradingView (screener com país Brasil + busca pelos emissores listados em data/bonds_emissores.txt) com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 80 (distressed). Preço e YTW são os do TradingView, sem cálculo próprio; a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond.</div>
     <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures), B3 (Boletim Diário do Mercado, Balcão) e CVM (dados abertos de securitizadoras).</div>`;
 }
 

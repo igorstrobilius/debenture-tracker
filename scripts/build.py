@@ -339,7 +339,7 @@ def main():
     os.makedirs(os.path.join(OUT, "history"), exist_ok=True)
     log("TradingView bonds...")
     try:
-        bond_rows = bonds.load()
+        bond_rows = bonds.load(os.path.join(OUT, "bonds_emissores.txt"))
         meta["bonds_em"] = dt.datetime.now(dt.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
     except Exception as e:  # noqa
         log(f"  TradingView indisponível: {e}")

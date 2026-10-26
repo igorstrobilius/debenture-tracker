@@ -1,0 +1,68 @@
+# Termos de busca do TradingView para bonds offshore brasileiros (um por linha).
+# O script busca cada termo, pega preço/YTW de cada bond e aplica o filtro (YTW >= 7,5% ou preço < 80 sem YTW).
+# Para incluir um emissor novo, acrescente uma linha com o nome do veículo emissor, como aparece no TradingView.
+GOL Finance
+Azul Secured Finance
+Azul Investments
+Abra Global Finance
+CSN Resources
+CSN Inova
+Companhia Siderurgica Nacional
+UNIGEL
+Ambipar
+Coruripe
+Constellation Oil Services
+Light Servicos de Eletricidade
+Oi S.A.
+Alloha
+Braskem
+Raizen
+Cosan
+Rumo Luxembourg
+Simpar
+Movida
+Vamos Europe
+JSL Europe
+MARB Bondco
+BRF S.A.
+Minerva Luxembourg
+Natura
+Aegea
+FS Luxembourg
+Oceanica
+Andrade Gutierrez
+General Shopping
+Usiminas
+Tupy
+3R Lux
+Brava Energia
+PRIO
+MC Brazil Downstream
+Hidrovias
+Klabin
+Samarco
+Ultrapar
+Petrobras
+Embraer
+Votorantim
+Globo
+InterCement
+Ocyan
+Ventura Offshore
+Atento
+Acelen
+Iguá
+Eletrobras
+Cemig
+Rede D'Or
+Banco BTG Pactual
+XP Inc
+Banco do Brasil
+Itau Unibanco
+Bradesco
+Banco Pan
+Banco BMG
+Banco Votorantim
+Nexa Resources
+Guara Norte
+MV24

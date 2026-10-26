@@ -106,6 +106,7 @@ td.num0 { color: var(--muted); font-size: 12px; }
 .colmenu .act { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .colmenu .act button { appearance: none; border: 0; background: none; color: var(--accent); font: 500 12px var(--f-body); cursor: pointer; padding: 0; }
 .sec { color: var(--muted); }
+.calc { font-style: italic; font-weight: 500; color: var(--muted); }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .notes { color: var(--muted); font-size: 12.5px; line-height: 1.55; max-width: 110ch; display: grid; gap: 4px; }
 .notes b { color: var(--ink); font-weight: 600; }
@@ -227,7 +228,7 @@ const COLS_NOTAXA = [
 const COLS_BONDS = [
   { k: "i", h: "#", fixed: 1, get: (r, i) => i + 1, html: (r, i) => `<td class="num0">${i + 1}</td>`, nosort: true },
   { k: "e", h: "Emissor", fixed: 1, l: 1, get: r => r.e, html: r => `<td class="l emi" title="${esc(r.bond)}">${esc(r.e)}<span class="sec"> · ${esc(r.bond)}</span></td>` },
-  { k: "ytw", h: "YTW", u: "%", hot: 1, get: r => r.ytw, html: r => `<td class="hotcol strong">${cell(r.ytw, 2)}</td>` },
+  { k: "ytw", h: "YTW", u: "%", hot: 1, get: r => r.ytw, html: r => `<td class="hotcol strong">${r.calc ? `<span class="calc" title="Calculado (bullet, sem call/amortização): o TradingView não publica yield">${cell(r.ytw, 2)}*</span>` : cell(r.ytw, 2)}</td>` },
   { k: "px", h: "Preço", u: "% do par", get: r => r.px, html: r => `<td>${cell(r.px, 2)}</td>` },
   { k: "amt", h: "Emissão", u: "mm", get: r => r.amt, html: r => `<td>${cell(r.amt, 0)}</td>` },
   { k: "venc", h: "Venc.", get: r => r.venc, html: r => `<td>${r.perp ? "Perpétuo" : (dBR(r.venc) ?? na)}</td>` },
@@ -404,7 +405,7 @@ function header() {
     <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA. <b>Emissão</b>: quantidade emitida × PU de emissão (cadastro B3).</div>
     <div><b>% PU Par B3</b>: preço médio dos negócios de 7d sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
     <div><b>CRI/CRA</b>: devedor pelo informe mensal das securitizadoras na CVM, seguido da securitizadora em cinza. Quando o informe não identifica um devedor único, aparece só a securitizadora. Taxa ANBIMA de CRI/CRA fica n/a.</div>
-    <div><b>Bonds offshore</b>: bonds de emissores brasileiros no TradingView (screener com país Brasil + busca pelos emissores listados em data/bonds_emissores.txt) com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 90. Preço e YTW são os do TradingView, sem cálculo próprio; a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond.</div>
+    <div><b>Bonds offshore</b>: bonds de emissores brasileiros no TradingView (screener com país Brasil + busca pelos emissores listados em data/bonds_emissores.txt) com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 90. Preço e YTW são os do TradingView. Quando o TradingView não publica yield, mostro em itálico com * um YTM calculado pelo script (bullet, cupom semestral, sem call nem amortização; perpétuos ficam n/a); a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond.</div>
     <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures), B3 (Boletim Diário do Mercado, Balcão) e CVM (dados abertos de securitizadoras).</div>`;
 }
 

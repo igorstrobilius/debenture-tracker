@@ -99,6 +99,44 @@ def _fetch(sym):
     return _http(f"{SYM}?{q}", tries=2)
 
 
+def _ytm_bullet(px, cpn, mat, today=None):
+    """YTM (bond-equivalent, cupom semestral, base 30/360) de um bullet a partir do preço limpo.
+    Usado só quando o TradingView não publica yield; ignora call, amortização e PIK."""
+    today = today or dt.date.today()
+    if not (px and cpn is not None and mat) or px <= 1:
+        return None
+    # datas de cupom semestrais, retroagindo do vencimento
+    dates, d = [], mat
+    while d > today:
+        dates.append(d)
+        m = d.month - 6
+        y = d.year + (m - 1) // 12
+        m = (m - 1) % 12 + 1
+        d = d.replace(year=y, month=m, day=min(d.day, 28 if m == 2 else 30))
+    if not dates:
+        return None
+    prev = d
+    dates.reverse()
+    d360 = lambda a, b: (b.year - a.year) * 360 + (b.month - a.month) * 30 + (min(b.day, 30) - min(a.day, 30))
+    frac = d360(prev, today) / 180.0
+    dirty = px + cpn / 2 * frac
+    c = cpn / 2
+
+    def pv(y):
+        r = y / 200
+        return sum((c + (100 if i == len(dates) - 1 else 0)) / (1 + r) ** (i + 1 - frac) for i in range(len(dates)))
+    lo, hi = -50.0, 500.0
+    if not (pv(hi) < dirty < pv(lo)):
+        return None
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if pv(mid) > dirty:
+            lo = mid
+        else:
+            hi = mid
+    return round((lo + hi) / 2, 3)
+
+
 def load(terms_path=None):
     # candidatos agrupados por bond (descrição)
     cands = {}
@@ -153,15 +191,24 @@ def load(terms_path=None):
     for rank, venue, sym, d in best.values():
         m = d.get("maturity_date")
         desc = d.get("description") or ""
+        perp = bool(m and m >= 29991231) or "PERP" in desc
+        ytw, calc = d.get("yield_to_worst"), False
+        if ytw is None and not perp and m:
+            try:
+                ytw = _ytm_bullet(d.get("close"), d.get("current_coupon"),
+                                  dt.date(int(str(m)[:4]), int(str(m)[4:6]), int(str(m)[6:])))
+                calc = ytw is not None
+            except Exception:  # noqa
+                ytw = None
         rows.append({
             "bond": desc,
             "e": d.get("bond_issuer_cr_parent") or desc.split(" ")[0],
-            "ytw": round(d["yield_to_worst"], 3) if d.get("yield_to_worst") is not None else None,
+            "ytw": round(ytw, 3) if ytw is not None else None, "calc": calc,
             "px": round(d["close"], 3) if d.get("close") is not None else None,
             "cpn": d.get("current_coupon"),
             "amt": round(d["issue_amount"] / 1e6) if d.get("issue_amount") else None,
             "venc": f"{str(m)[:4]}-{str(m)[4:6]}-{str(m)[6:]}" if m and m < 29991231 else None,
-            "perp": bool(m and m >= 29991231) or "PERP" in desc,
+            "perp": perp,
             "ccy": d.get("coupon_currency") or d.get("currency_id") or None,
             "venue": venue, "sym": sym,
         })

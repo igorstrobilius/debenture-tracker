@@ -137,6 +137,37 @@ def _ytm_bullet(px, cpn, mat, today=None):
     return round((lo + hi) / 2, 3)
 
 
+UST_URL = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/"
+           "{y}/all?type=daily_treasury_yield_curve&field_tdr_date_value={y}&page&_format=csv")
+UST_TENORS = {"1 Mo": 1 / 12, "1.5 Month": 1.5 / 12, "2 Mo": 2 / 12, "3 Mo": 0.25, "4 Mo": 4 / 12, "6 Mo": 0.5,
+              "1 Yr": 1, "2 Yr": 2, "3 Yr": 3, "5 Yr": 5, "7 Yr": 7, "10 Yr": 10, "20 Yr": 20, "30 Yr": 30}
+
+
+def treasury_curve():
+    """Curva par do Tesouro americano (último dia publicado): {anos: (rótulo, taxa %)}, data."""
+    import csv, io
+    y = dt.date.today().year
+    for yr in (y, y - 1):
+        try:
+            req = urllib.request.Request(UST_URL.format(y=yr), headers={"User-Agent": "Mozilla/5.0"})
+            text = urllib.request.urlopen(req, timeout=60).read().decode("utf-8-sig")
+        except Exception as e:  # noqa
+            print(f"  Treasury falhou: {e}", flush=True)
+            continue
+        rows = list(csv.DictReader(io.StringIO(text)))
+        if rows:
+            r = rows[0]  # mais recente primeiro
+            curve = {}
+            for k, t in UST_TENORS.items():
+                try:
+                    curve[t] = (k.replace(" Month", "M").replace(" Mo", "M").replace(" Yr", "Y"), float(r[k]))
+                except (KeyError, ValueError, TypeError):
+                    pass
+            d = dt.datetime.strptime(r["Date"], "%m/%d/%Y").date().isoformat()
+            return curve, d
+    return {}, None
+
+
 def load(terms_path=None):
     # candidatos agrupados por bond (descrição)
     cands = {}
@@ -187,6 +218,8 @@ def load(terms_path=None):
                 if d.get("yield_to_worst") is not None:
                     break
 
+    curve, ust_date = treasury_curve()
+    print(f"  Treasury {ust_date}: {len(curve)} vértices", flush=True)
     rows = []
     for rank, venue, sym, d in best.values():
         m = d.get("maturity_date")
@@ -200,7 +233,14 @@ def load(terms_path=None):
                 calc = ytw is not None
             except Exception:  # noqa
                 ytw = None
+        spr, ust_lbl = None, None
+        if ytw is not None and not perp and m and curve:
+            yrs = (dt.date(int(str(m)[:4]), int(str(m)[4:6]), int(str(m)[6:])) - dt.date.today()).days / 365.25
+            t = min(curve, key=lambda k: abs(k - yrs))  # vértice mais próximo do vencimento
+            ust_lbl, ust = curve[t]
+            spr = round((ytw - ust) * 100)
         rows.append({
+            "spr": spr, "ust": ust_lbl,
             "bond": desc,
             "e": d.get("bond_issuer_cr_parent") or desc.split(" ")[0],
             "ytw": round(ytw, 3) if ytw is not None else None, "calc": calc,
@@ -213,4 +253,5 @@ def load(terms_path=None):
             "venue": venue, "sym": sym,
         })
     print(f"  TradingView: {len(rows)} bonds no filtro", flush=True)
+    load.ust_date = ust_date
     return rows

@@ -340,6 +340,7 @@ def main():
     log("TradingView bonds...")
     try:
         bond_rows = bonds.load(os.path.join(OUT, "bonds_emissores.txt"))
+        meta["treasury_data"] = getattr(bonds.load, "ust_date", None)
         meta["bonds_em"] = dt.datetime.now(dt.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
     except Exception as e:  # noqa
         log(f"  TradingView indisponível: {e}")

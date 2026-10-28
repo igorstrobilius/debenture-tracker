@@ -29,7 +29,7 @@ def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
 
-def http(url, data=None, timeout=300, tries=4):
+def http(url, data=None, timeout=300, tries=4, wait=5):
     err = None
     for i in range(tries):
         try:
@@ -46,7 +46,7 @@ def http(url, data=None, timeout=300, tries=4):
         except Exception as e:  # noqa
             err = e
         log(f"  retry {i+1} {url[:90]}: {err}")
-        time.sleep(5 * (i + 1))
+        time.sleep(wait * (i + 1))
     raise RuntimeError(f"falhou: {url}: {err}")
 
 
@@ -108,7 +108,7 @@ def anbima_latest(start, back=12):
 def b3_csv(name, d0, d1):
     body = json.dumps({"Name": name, "Date": f"{d0:%Y-%m-%d}", "FinalDate": f"{d1:%Y-%m-%d}",
                        "ClientId": "", "Filters": {}}).encode()
-    st, raw = http(B3_EXPORT, data=body, timeout=600)
+    st, raw = http(B3_EXPORT, data=body, timeout=600, tries=6, wait=30)  # B3 instável: até ~7 min de novas tentativas
     text = raw.decode("utf-8-sig", errors="replace")
     lines = list(csv.reader(io.StringIO(text), delimiter=";"))
     hdr_i = next((i for i, r in enumerate(lines) if len(r) > 5 and ("Código IF" in r or "Instrumento financeiro" in r)), None)

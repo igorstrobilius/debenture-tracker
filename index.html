@@ -203,6 +203,7 @@ const COLS_PAPEL = [
   { k: "e", h: "Emissor", l: 1, get: r => r.e, html: emiCell },
   { k: "rem", h: "Remuneração", l: 1, get: r => r.rem, html: r => `<td class="l">${r.rem ? esc(r.rem) : na}</td>` },
   { k: "b1", h: "Taxa B3", u: "últ. pregão", get: r => r.b1, html: r => `<td>${cell(r.b1, 2)}</td>` },
+  { k: "b1v", h: "Volume", u: "últ. pregão, R$ mm", get: r => r.b1v, html: r => `<td>${r.b1v == null ? na : fmt(r.b1v, 2)}${r.b1n ? `<span class="sec"> (${r.b1n})</span>` : ""}</td>` },
   { k: "bw", h: "Taxa B3 7d", u: "méd. pond.", hot: 1, get: r => r.bw, html: r => `<td class="hotcol strong">${cell(r.bw, 2)}</td>` },
   { k: "venc", h: "Venc.", get: r => r.venc, html: r => `<td>${dBR(r.venc) ?? na}</td>` },
   { k: "vem", h: "Emissão", u: "R$ mm", get: r => r.vem, html: r => `<td>${cell(r.vem, 0)}</td>` },
@@ -220,6 +221,7 @@ const COLS_PAPEL = [
 const COLS_NOTAXA = [
   ...COLS_PAPEL.filter(c => ["i", "c", "t", "e", "rem"].includes(c.k)),
   { k: "pu1", h: "PU B3", u: "últ. pregão, R$", get: r => r.pu1, html: r => `<td>${cell(r.pu1, 2)}</td>` },
+  { k: "b1v", h: "Volume", u: "últ. pregão, R$ mm", get: r => r.b1v, html: r => `<td>${r.b1v == null ? na : fmt(r.b1v, 2)}${r.b1n ? `<span class="sec"> (${r.b1n})</span>` : ""}</td>` },
   { k: "puw", h: "PU B3 7d", u: "méd. pond., R$", hot: 1, get: r => r.puw, html: r => `<td class="hotcol strong">${cell(r.puw, 2)}</td>` },
   { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
   { k: "cts", h: "% PU Par ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },

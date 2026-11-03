@@ -27,7 +27,7 @@ def _http(url, body=None, tries=3):
             h = dict(HDR)
             if body is not None:
                 h["Content-Type"] = "application/json"
-            with urllib.request.urlopen(urllib.request.Request(url, data=body, headers=h), timeout=60) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, data=body, headers=h), timeout=25) as r:
                 return json.load(r)
         except Exception as e:  # noqa
             err = e
@@ -42,11 +42,21 @@ def _scan(filters):
     return _http(SCAN, body) or {}
 
 
+_SCAN_BUDGET = {"calls": 0}
+
+
 def _collect(field, lo, hi, extra, out, depth=0):
+    _SCAN_BUDGET["calls"] += 1
+    if _SCAN_BUDGET["calls"] > 300:
+        return
     f = extra + [{"left": field, "operation": "in_range", "right": [lo, hi]}]
     d = _scan(f)
     n = d.get("totalCount", 0)
     if n == 0:
+        return
+    if depth == 0 and n > 3000:
+        # o screener anônimo passou a ignorar os filtros (devolve o universo todo): pula e usa só a busca por emissor
+        print(f"  screener ignorou os filtros ({n} resultados); usando só a busca por emissor", flush=True)
         return
     if n <= 10 or depth > 18:
         out.extend(x["s"] for x in d.get("data", []))

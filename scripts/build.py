@@ -395,6 +395,12 @@ def main():
     except Exception as e:  # noqa
         log(f"  TradingView indisponível: {e}")
         bond_rows = []
+    if not bond_rows:  # mantém os bonds da rodada anterior em vez de esvaziar a aba
+        try:
+            bond_rows = json.load(open(os.path.join(OUT, "latest.json"))).get("bonds", [])
+            log(f"  mantendo {len(bond_rows)} bonds da rodada anterior")
+        except Exception:  # noqa
+            pass
     payload = {"meta": meta, "rows": rows, "bonds": bond_rows}
     with open(os.path.join(OUT, "latest.json"), "w") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))

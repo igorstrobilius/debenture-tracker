@@ -212,7 +212,7 @@ const COLS_PAPEL = [
   { k: "bwn", h: "Negócios 7d", get: r => r.bwn, html: r => `<td>${r.bwn ?? na}</td>` },
   { k: "a", h: "Taxa ANBIMA", u: "indicativa", get: r => r.a, html: r => `<td>${cell(r.a, 2)}</td>` },
   { k: "a_w", h: "Change WoW spread", u: "ANBIMA, bps", get: r => r.a_w, html: r => `<td>${signed(r.a_w)}</td>` },
-  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${r.bwp != null && r.bwp_aprox ? `<span class="calc" title="Aproximado: valor unitário da série no informe mensal da CVM (fim do mês de referência)">~${fmt(r.bwp, 1)}</span>` : cell(r.bwp, 1)}</td>` },
   { k: "dur", h: "Duration", u: "anos", get: r => r.dur, html: r => `<td>${cell(r.dur, 1)}</td>` },
   { k: "inc", h: "Inc.", get: r => r.inc ? 1 : 0, html: r => `<td>${r.inc ? '<span class="inc">12.431</span>' : ""}</td>` },
   { k: "last", h: "Últ. negócio", get: r => r.last, html: r => `<td>${dBR(r.last) ?? na}</td>` },
@@ -223,7 +223,7 @@ const COLS_NOTAXA = [
   { k: "pu1", h: "PU B3", u: "últ. pregão, R$", get: r => r.pu1, html: r => `<td>${cell(r.pu1, 2)}</td>` },
   { k: "b1v", h: "Volume", u: "últ. pregão, R$ mm", get: r => r.b1v, html: r => `<td>${r.b1v == null ? na : fmt(r.b1v, 2)}${r.b1n ? `<span class="sec"> (${r.b1n})</span>` : ""}</td>` },
   { k: "puw", h: "PU B3 7d", u: "méd. pond., R$", hot: 1, get: r => r.puw, html: r => `<td class="hotcol strong">${cell(r.puw, 2)}</td>` },
-  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${cell(r.bwp, 1)}</td>` },
+  { k: "bwp", h: "% PU Par B3", u: "7d", get: r => r.bwp, html: r => `<td>${r.bwp != null && r.bwp_aprox ? `<span class="calc" title="Aproximado: valor unitário da série no informe mensal da CVM (fim do mês de referência)">~${fmt(r.bwp, 1)}</span>` : cell(r.bwp, 1)}</td>` },
   { k: "cts", h: "% PU Par ANBIMA", get: r => r.cts, html: r => `<td>${cell(r.cts, 1)}</td>` },
   ...COLS_PAPEL.filter(c => ["venc", "vem", "bwv", "bwn", "inc", "last"].includes(c.k)),
 ];
@@ -406,7 +406,7 @@ function header() {
     <div><b>Taxas B3</b>: média ponderada por volume da taxa de cada negócio do arquivo "Negócio a negócio" da B3 (DEB, CRI e CRA). Ficam de fora negócios cancelados, abaixo de R$ ${m.corte_volume_rs.toLocaleString("pt-BR")}, sem taxa calculada e registros repetidos (mesmo papel, horário, quantidade e preço contam uma vez). <b>Últ. pregão</b> = ${dBR(m.b3_ultimo_pregao)}; <b>7d</b> = últimos 7 dias corridos (${jan.length} pregões).</div>
     <div><b>Δ B3 WoW</b>: taxa B3 7d menos a taxa B3 dos 7 dias anteriores${jp ? ` (${dBR(jp[0])} a ${dBR(jp[1])})` : ""}, em bps; n/a se o papel não negociou nos dois períodos. <b>Change WoW spread</b>: variação da taxa indicativa ANBIMA contra ${dBR(m.anbima_semana_anterior)}.</div>
     <div><b>Convenção</b>: DI+ em spread sobre o DI, IPCA+ em taxa real, Pré em taxa nominal, %DI em percentual do DI, igual à ANBIMA. <b>Emissão</b>: quantidade emitida × PU de emissão (cadastro B3).</div>
-    <div><b>% PU Par B3</b>: preço médio dos negócios de 7d sobre o PU par da ANBIMA (n/a quando a ANBIMA não precifica o papel). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
+    <div><b>% PU Par B3</b>: preço dos negócios de 7d sobre o PU par de cada dia, ponderado por volume. PU par: SND/debentures.com.br para debêntures (fallback ANBIMA); para CRI/CRA, valor unitário da série no informe mensal da CVM, marcado com ~ por ser do fim do mês de referência (sem o carrego desde então). A aba <b>Abaixo de 40c</b> concentra tudo abaixo de 40% do par em qualquer indexador, pelo % PU Par B3 ou, sem negócio, pelo da ANBIMA.</div>
     <div><b>CRI/CRA</b>: devedor pelo informe mensal das securitizadoras na CVM, seguido da securitizadora em cinza. Quando o informe não identifica um devedor único, aparece só a securitizadora. Taxa ANBIMA de CRI/CRA fica n/a.</div>
     <div><b>Bonds offshore</b>: bonds de emissores brasileiros no TradingView (screener com país Brasil + busca pelos emissores listados em data/bonds_emissores.txt) com YTW a partir de 7,5%, mais os sem YTW publicado com preço abaixo de 90. Preço e YTW são os do TradingView. Quando o TradingView não publica yield, mostro em itálico com * um YTM calculado pelo script (bullet, cupom semestral, sem call nem amortização; perpétuos ficam n/a); a fonte preferida é o FINRA (TRACE), depois as bolsas europeias. Emissão em milhões da moeda do bond. <b>Spread UST</b>: YTW menos a taxa da curva par do Tesouro americano${m.treasury_data ? ` de ${dBR(m.treasury_data)}` : ""} no vértice mais próximo do vencimento (indicado ao lado), em bps; n/a para perpétuos e bonds sem yield.</div>
     <div>Atualizado em ${new Date(m.gerado_em).toLocaleString("pt-BR")}. Fontes: ANBIMA (mercado secundário de debêntures), B3 (Boletim Diário do Mercado, Balcão) e CVM (dados abertos de securitizadoras).</div>`;

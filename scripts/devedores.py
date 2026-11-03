@@ -5,7 +5,9 @@ Ordem de preferência para o nome exibido:
   2. "Nome_Emissao" do informe, quando parece um nome (ex.: "CORP HAPVIDA II")
   3. nada (o dashboard mostra só a securitizadora)
 """
-import csv, io, json, os, re, time, zipfile, datetime as dt, urllib.request
+import csv, io, json, os, re, sys, time, zipfile, datetime as dt, urllib.request
+
+csv.field_size_limit(sys.maxsize)  # o informe da CVM tem campos de texto enormes
 
 CVM = "https://dados.cvm.gov.br/dados"
 UA = {"User-Agent": "Mozilla/5.0 (debenture-tracker)"}
@@ -39,6 +41,16 @@ def _fl(s):
         return 0.0
 
 
+def _cnpj_ok(c):
+    if len(c) != 14 or len(set(c)) == 1:
+        return False
+    def dv(base, w):
+        t = sum(int(a) * b for a, b in zip(base, w)) % 11
+        return "0" if t < 2 else str(11 - t)
+    w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    return c[12] == dv(c[:12], w1) and c[13] == dv(c[:13], [6] + w1)
+
+
 def _digits(c):
     return re.sub(r"\D", "", c or "")
 
@@ -47,16 +59,16 @@ BAD_NOME = re.compile(r"(s[ée]rie|emiss[ãa]o|s[êe]nior|subordinad|mezanino|^c
 
 
 def _clean_nome(n):
-    n = (n or "").strip()
+    n = re.sub(r"^\s*(CORP|CRI|CRA)[\s\-_]+", "", (n or "").strip(), flags=re.I).strip(" -_")
     if not n or BAD_NOME.search(n) or len(n) < 3:
         return None
-    n = re.sub(r"^(CORP|CRI|CRA)\s+", "", n, flags=re.I).strip()
     return n.upper()
 
 
 def load(cache_path, years=None):
-    years = years or [dt.date.today().year, dt.date.today().year - 1]
-    nome, dev, cetip2cert = {}, {}, {}
+    y0 = dt.date.today().year
+    years = years or [y0 - 2, y0 - 1, y0]
+    nome, dev, cetip2cert, par = {}, {}, {}, {}
     for kind in ("cri", "cra"):
         for y in sorted(years):  # ano mais recente por último, sobrescreve
             raw = _get(f"{CVM}/SECURIT/DOC/INF_MENSAL_{kind.upper()}/DADOS/inf_mensal_{kind}_{y}.zip")
@@ -68,19 +80,37 @@ def load(cache_path, years=None):
                 if n:
                     nome[r["Codigo_Identificacao_Certificado"]] = n
             for r in _csv(zf, f"_classe_{y}.csv"):
-                if r.get("Codigo_CETIP"):
-                    cetip2cert[r["Codigo_CETIP"].strip()] = r["Codigo_Identificacao_Certificado"]
-            best = {}
+                code = (r.get("Codigo_CETIP") or "").strip()
+                if code:
+                    cetip2cert[code] = r["Codigo_Identificacao_Certificado"]
+                    # valor unitário da série no fim do mês de referência (saldo atualizado / quantidade)
+                    q, v = _fl(r.get("Quantidade_Certificados")), _fl(r.get("Valor_Certificados"))
+                    ref = r.get("Data_Referencia", "")
+                    if q > 0 and v > 0 and (code not in par or ref >= par[code][0]):
+                        par[code] = (ref, v / q)
+            # por certificado, no informe mais recente: maior devedor e maior cedente (CNPJ e %)
+            last = {}
             for r in _csv(zf, f"_cedente_devedor_{y}.csv"):
-                if r.get("Tipo") != "Devedor" or not _digits(r.get("CNPJ")):
+                tipo, cnpj = r.get("Tipo"), _digits(r.get("CNPJ"))
+                if tipo not in ("Devedor", "Cedente") or not _cnpj_ok(cnpj):
                     continue
-                k = r["Codigo_Identificacao_Certificado"]
-                key = (r.get("Data_Referencia", ""), _fl(r.get("Percentual")))
-                if k not in best or key > best[k][0]:
-                    best[k] = (key, _digits(r["CNPJ"]))
-            for k, (key, cnpj) in best.items():
-                if key[1] >= 0.5:
-                    dev[k] = cnpj
+                k, ref = r["Codigo_Identificacao_Certificado"], r.get("Data_Referencia", "")
+                if k not in last or ref > last[k][0]:
+                    last[k] = (ref, {})
+                if ref == last[k][0]:
+                    cur = last[k][1].get(tipo)
+                    pct = _fl(r.get("Percentual"))
+                    if cur is None or pct > cur[0]:
+                        last[k][1][tipo] = (pct, cnpj)
+            for k, (ref, t) in last.items():
+                dv, cd = t.get("Devedor"), t.get("Cedente")
+                # devedor relevante (>= 20%); senão cedente concentrado (>= 50%), típico de CRA/CRI corporativo
+                if dv and dv[0] >= 0.2:
+                    dev[k] = dv[1]
+                elif cd and cd[0] >= 0.5:
+                    dev[k] = cd[1]
+                elif k in dev:
+                    pass
     print(f"  CVM: {len(nome)} nomes de emissão, {len(dev)} devedores, {len(cetip2cert)} códigos CETIP", flush=True)
 
     # nomes por CNPJ: cache → cadastro CVM → BrasilAPI
@@ -93,7 +123,7 @@ def load(cache_path, years=None):
             d = _digits(r.get("CNPJ_CIA"))
             if d and d not in cache and r.get("DENOM_SOCIAL"):
                 cache[d] = r["DENOM_SOCIAL"].strip()
-    missing = [c for c in set(dev.values()) if c not in cache][:400]
+    missing = [c for c in set(dev.values()) if c not in cache][:600]
     for c in missing:
         b = _get(f"https://brasilapi.com.br/api/cnpj/v1/{c}", timeout=15, tries=1)
         if not b:
@@ -112,4 +142,5 @@ def load(cache_path, years=None):
         if cert in dev and cache.get(dev[cert]):
             return cache[dev[cert]]
         return nome.get(cert)
+    lookup.par = lambda code: par.get(code)
     return lookup

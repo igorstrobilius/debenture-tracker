@@ -208,6 +208,33 @@ def to_iso(s):
         return None
 
 
+SND_URL = ("https://www.debentures.com.br/exploreosnd/consultaadados/emissoesdedebentures/puhistorico_e.asp"
+           "?op_exc=False&ativo=&dt_ini={a:%d/%m/%Y}&dt_fim={b:%d/%m/%Y}&Submit.x=1&Submit.y=1")
+
+
+def snd_pu_par(d0, d1):
+    """PU par diário de todas as debêntures (SND / debentures.com.br): {código: {data: PU}}."""
+    try:
+        st, body = http(SND_URL.format(a=d0, b=d1), timeout=180, tries=3, wait=10)
+    except Exception as e:  # noqa
+        log(f"  SND indisponível: {e}")
+        return {}
+    out = {}
+    for line in body.decode("latin1").splitlines():
+        p = line.split("\t")
+        if len(p) < 6 or not p[0][:2].isdigit():
+            continue
+        try:
+            d = dt.datetime.strptime(p[0].strip(), "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        pu = num(p[5])
+        if pu:
+            out.setdefault(p[1].strip(), {})[d] = pu
+    log(f"  SND: PU par de {len(out)} debêntures")
+    return out
+
+
 def wavg(ts):
     ts = [t for t in ts if t["r"] is not None]   # negócios só em PU (sem taxa) não entram na média de taxa
     v = sum(t["v"] for t in ts)
@@ -262,6 +289,9 @@ def main():
         log(f"  CVM indisponível: {e}")
         devedor = lambda c, i: None
 
+    log("SND PU par...")
+    snd = snd_pu_par(w0 - dt.timedelta(days=5), d_b3) if d_b3 else {}
+
     by, byp = {}, {}
     for t in valid:
         if w0 <= t["d"] <= d_b3:
@@ -295,12 +325,31 @@ def main():
         par = (a["pu"] / a["ppar"] * 100) if a and a["pu"] and a["ppar"] else None
         t1 = [t for t in ts if t["d"] == d_b3]
         last = max((t["d"] for t in ts), default=None)
+        cvm_par = devedor.par(c) if tipo in ("CRI", "CRA") and hasattr(devedor, "par") else None
+        par_aprox = False
+
+        def par_on(day):
+            nonlocal par_aprox
+            sp = snd.get(c)
+            if sp:
+                ds = [x for x in sp if x <= day]
+                if ds:
+                    return sp[max(ds)]
+            if par:
+                return par
+            if cvm_par:
+                par_aprox = True
+                return cvm_par[1]
+            return None
+
         def ppar_of(sub):
-            if not par or not sub:
-                return None
-            v = sum(t["v"] for t in sub)
-            q = sum(t["q"] or 0 for t in sub)
-            return round(v / q / par * 100, 2) if q else None
+            num_, den = 0.0, 0.0
+            for t in sub:
+                pv = par_on(t["d"])
+                if pv and t["q"]:
+                    num_ += t["v"]
+                    den += t["q"] * pv
+            return round(num_ / den * 100, 2) if den else None
         def pu_of(sub):
             q = sum(t["q"] or 0 for t in sub)
             return round(sum(t["v"] for t in sub) / q, 2) if sub and q else None
@@ -321,6 +370,7 @@ def main():
             "bwv": round(sum(t["v"] for t in ts) / 1e6, 2) if ts else None,
             "bwn": len(ts) or None,
             "bwp": ppar_of(ts),
+            "bwp_aprox": par_aprox or None,
             "pu1": pu_of(t1), "puw": pu_of(ts),
             "last": last.isoformat() if last else None,
         }
